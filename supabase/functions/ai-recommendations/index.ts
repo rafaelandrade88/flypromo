@@ -74,7 +74,11 @@ Gere exatamente 10 recomendações ordenadas do mais barato ao mais caro. priceC
 
     if (!res.ok) {
       const err = await res.json();
-      return new Response(JSON.stringify({ error: "Claude API error", details: err }), {
+      const message =
+        err?.error?.message?.includes("credit balance")
+          ? "Serviço de IA temporariamente indisponível. Tente novamente mais tarde."
+          : err?.error?.message ?? "Claude API error";
+      return new Response(JSON.stringify({ error: message }), {
         status: res.status,
         headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
       });

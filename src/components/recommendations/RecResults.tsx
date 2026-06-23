@@ -1,4 +1,4 @@
-import { Bot, AlertCircle, Lightbulb } from 'lucide-react'
+import { Bot, AlertCircle, Lightbulb, WifiOff } from 'lucide-react'
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert'
 import { Skeleton } from '@/components/ui/skeleton'
 import { EmptyState } from '@/components/ui/empty-state'
@@ -33,11 +33,19 @@ export function RecResults({
   if (loading) return <RecSkeleton />
 
   if (error) {
+    const isServiceUnavailable = error.toLowerCase().includes('temporariamente') || error.toLowerCase().includes('indispon')
     return (
       <Alert variant="destructive">
-        <AlertCircle />
-        <AlertTitle>Erro ao gerar recomendações</AlertTitle>
-        <AlertDescription>{error}</AlertDescription>
+        {isServiceUnavailable ? <WifiOff /> : <AlertCircle />}
+        <AlertTitle>{isServiceUnavailable ? 'Serviço indisponível' : 'Erro ao gerar recomendações'}</AlertTitle>
+        <AlertDescription>
+          {error}
+          {isServiceUnavailable && (
+            <span className="mt-1 block text-xs opacity-80">
+              O serviço de IA está temporariamente fora do ar. As demais funcionalidades continuam disponíveis.
+            </span>
+          )}
+        </AlertDescription>
       </Alert>
     )
   }
