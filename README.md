@@ -9,22 +9,31 @@
 ## 📦 Estrutura do Projeto
 
 ```
-flightwatch/
-├── index.html                          # Frontend PWA (single-file)
-├── sw.js                               # Service Worker
-├── manifest.json                       # PWA Manifest
+flypromo/
+├── index.html                          # Entry point Vite
+├── vite.config.ts                      # Vite + Tailwind v4 + PWA (base /flypromo/)
+├── src/                                # App React + TypeScript
+│   ├── main.tsx, App.tsx
+│   ├── lib/        (supabase, utils)
+│   ├── types/      (Flight, Recommendation, Favorite, ...)
+│   ├── hooks/      (useAuth, useFavorites, useHistory)
+│   ├── components/ (ui, layout, auth, search, recommendations, favorites, history)
+│   └── pages/      (Search, Recommendations, Favorites, History)
 ├── README.md
 ├── supabase/
 │   ├── migrations/
-│   │   └── 001_initial_schema.sql      # Schema PostgreSQL + RLS
+│   │   ├── 001_initial_schema.sql      # Schema PostgreSQL + RLS
+│   │   └── 002_rls_performance.sql     # RLS (select auth.uid()) + search_path
 │   └── functions/
 │       ├── search-flights/
-│       │   └── index.ts                # Edge Function: proxy Amadeus API
+│       │   └── index.ts                # Edge Function: SerpApi Google Flights
 │       └── ai-recommendations/
 │           └── index.ts                # Edge Function: Claude AI
-└── docs/
-    └── setup.md
+└── deploy.ps1
 ```
+
+> O Service Worker e o `manifest.webmanifest` são gerados automaticamente
+> em `dist/` pelo `vite-plugin-pwa` durante o build.
 
 ---
 
@@ -33,7 +42,7 @@ flightwatch/
 ### 1. Supabase
 
 1. Crie um projeto em [supabase.com](https://supabase.com)
-2. Vá em **SQL Editor** e execute `supabase/migrations/001_initial_schema.sql`
+2. Vá em **SQL Editor** e execute `supabase/migrations/001_initial_schema.sql` e depois `supabase/migrations/002_rls_performance.sql`
 3. Vá em **Authentication → Providers** e ative:
    - **Email** (já ativo por padrão)
    - **Google** (requer OAuth credentials do Google Cloud Console)
