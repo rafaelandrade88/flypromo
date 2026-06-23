@@ -1,11 +1,11 @@
 // FlightWatch - Edge Function: ai-recommendations
-// Recomendações inteligentes de destinos via Google Gemini API
-// Versão: 2.0.0
+// Recomendações inteligentes de destinos via Groq API (LLaMA 3)
+// Versão: 3.0.0
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
-const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY")!;
-const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`;
+const GROQ_API_KEY = Deno.env.get("GROQ_API_KEY")!;
+const GROQ_URL = "https://api.groq.com/openai/v1/chat/completions";
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -59,24 +59,23 @@ Retorne APENAS um JSON válido (sem markdown, sem blocos de código, sem texto a
 
 Gere exatamente 10 recomendações ordenadas do mais barato ao mais caro. priceCategory deve ser "low", "medium" ou "high". Foque em destinos realistas e acessíveis para brasileiros saindo de ${origin}.`;
 
-    const res = await fetch(GEMINI_URL, {
+    const res = await fetch(GROQ_URL, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${GROQ_API_KEY}`,
+      },
       body: JSON.stringify({
-        contents: [{ parts: [{ text: prompt }] }],
-        generationConfig: {
-          temperature: 0.7,
-          maxOutputTokens: 2048,
-        },
+        model: "llama-3.3-70b-versatile",
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0.7,
+        max_tokens: 2048,
       }),
     });
 
     if (!res.ok) {
       const err = await res.json();
-      const message =
-        err?.error?.message?.includes("quota")
-          ? "Serviço de IA temporariamente indisponível. Tente novamente mais tarde."
-          : err?.error?.message ?? "Gemini API error";
+      const message = err?.error?.message ?? "Groq API error";
       return new Response(JSON.stringify({ error: message }), {
         status: res.status,
         headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
@@ -84,18 +83,16 @@ Gere exatamente 10 recomendações ordenadas do mais barato ao mais caro. priceC
     }
 
     const data = await res.json();
-    const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? "";
+    const rawText = data.choices?.[0]?.message?.content?.trim() ?? "";
 
     let parsed;
     try {
-      // Remove markdown code blocks if Gemini wraps in ```json ... ```
       const clean = rawText.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
       parsed = JSON.parse(clean);
     } catch {
-      // Fallback: extrai JSON do texto
       const match = rawText.match(/\{[\s\S]*\}/);
       if (match) parsed = JSON.parse(match[0]);
-      else throw new Error("Invalid JSON from Gemini");
+      else throw new Error("Invalid JSON from Groq");
     }
 
     return new Response(JSON.stringify(parsed), {
