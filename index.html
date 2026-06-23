@@ -1,0 +1,1375 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#0f172a" />
+  <meta name="description" content="FlightWatch — Monitore e compare passagens aéreas com inteligência artificial" />
+  <title>FlightWatch ✈️</title>
+  <link rel="manifest" href="/flightwatch/manifest.json" />
+  <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>✈️</text></svg>" />
+
+  <!-- Supabase SDK -->
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+
+  <style>
+    /* ============================================================
+       DESIGN TOKENS & RESET
+    ============================================================ */
+    :root {
+      --bg-base: #0f172a;
+      --bg-surface: #1e293b;
+      --bg-card: #263148;
+      --bg-card-hover: #2d3a54;
+      --border: #334155;
+      --border-light: #475569;
+      --text-primary: #f1f5f9;
+      --text-secondary: #94a3b8;
+      --text-muted: #64748b;
+      --accent: #3b82f6;
+      --accent-hover: #2563eb;
+      --accent-glow: rgba(59,130,246,0.15);
+      --green: #22c55e;
+      --green-bg: rgba(34,197,94,0.12);
+      --yellow: #eab308;
+      --yellow-bg: rgba(234,179,8,0.12);
+      --red: #ef4444;
+      --red-bg: rgba(239,68,68,0.12);
+      --radius: 12px;
+      --radius-sm: 8px;
+      --shadow: 0 4px 24px rgba(0,0,0,0.3);
+      --transition: 0.2s cubic-bezier(.4,0,.2,1);
+      --sidebar-w: 260px;
+    }
+
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    html { scroll-behavior: smooth; }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', system-ui, sans-serif;
+      background: var(--bg-base);
+      color: var(--text-primary);
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+    a { color: inherit; text-decoration: none; }
+    button { cursor: pointer; border: none; outline: none; font-family: inherit; }
+    input, select { font-family: inherit; outline: none; }
+
+    /* ============================================================
+       LAYOUT
+    ============================================================ */
+    .app { display: flex; min-height: 100vh; }
+
+    /* Sidebar */
+    .sidebar {
+      position: fixed; top: 0; left: 0;
+      width: var(--sidebar-w); height: 100vh;
+      background: var(--bg-surface);
+      border-right: 1px solid var(--border);
+      display: flex; flex-direction: column;
+      transform: translateX(-100%);
+      transition: transform var(--transition);
+      z-index: 200;
+      overflow-y: auto;
+    }
+    .sidebar.open { transform: translateX(0); }
+
+    .sidebar-logo {
+      display: flex; align-items: center; gap: 10px;
+      padding: 20px;
+      border-bottom: 1px solid var(--border);
+      font-size: 1.1rem; font-weight: 700;
+    }
+    .sidebar-logo span { font-size: 1.5rem; }
+
+    .sidebar-nav { flex: 1; padding: 12px 0; }
+    .nav-item {
+      display: flex; align-items: center; gap: 12px;
+      padding: 12px 20px;
+      color: var(--text-secondary);
+      font-size: 0.9rem; font-weight: 500;
+      border-radius: 0;
+      transition: all var(--transition);
+      cursor: pointer;
+      background: none; width: 100%; text-align: left;
+    }
+    .nav-item:hover, .nav-item.active {
+      background: var(--accent-glow);
+      color: var(--accent);
+    }
+    .nav-item .icon { font-size: 1.1rem; width: 20px; text-align: center; }
+
+    .sidebar-footer {
+      padding: 16px 20px;
+      border-top: 1px solid var(--border);
+    }
+    .user-info {
+      display: flex; align-items: center; gap: 10px;
+      margin-bottom: 12px;
+    }
+    .user-avatar {
+      width: 36px; height: 36px; border-radius: 50%;
+      background: var(--accent-glow);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 1rem; flex-shrink: 0;
+      overflow: hidden;
+    }
+    .user-avatar img { width: 100%; height: 100%; object-fit: cover; }
+    .user-name { font-size: 0.85rem; font-weight: 600; line-height: 1.2; }
+    .user-email { font-size: 0.75rem; color: var(--text-muted); }
+    .btn-logout {
+      width: 100%; padding: 8px;
+      background: rgba(239,68,68,0.1); color: var(--red);
+      border-radius: var(--radius-sm); font-size: 0.85rem;
+      transition: background var(--transition);
+    }
+    .btn-logout:hover { background: rgba(239,68,68,0.2); }
+
+    /* Overlay */
+    .overlay {
+      position: fixed; inset: 0;
+      background: rgba(0,0,0,0.6);
+      backdrop-filter: blur(2px);
+      z-index: 150;
+      display: none;
+    }
+    .overlay.show { display: block; }
+
+    /* Main */
+    .main { flex: 1; display: flex; flex-direction: column; min-height: 100vh; }
+
+    /* Topbar */
+    .topbar {
+      position: sticky; top: 0; z-index: 100;
+      display: flex; align-items: center; gap: 12px;
+      padding: 14px 20px;
+      background: rgba(15,23,42,0.95);
+      backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--border);
+    }
+    .hamburger {
+      display: flex; flex-direction: column; justify-content: center; gap: 4px;
+      width: 36px; height: 36px;
+      padding: 6px;
+      border-radius: var(--radius-sm);
+      background: none;
+      transition: background var(--transition);
+    }
+    .hamburger:hover { background: var(--bg-surface); }
+    .hamburger span {
+      display: block; height: 2px; background: var(--text-primary);
+      border-radius: 2px; transition: all var(--transition);
+    }
+
+    .topbar-title {
+      font-size: 1.05rem; font-weight: 700;
+      display: flex; align-items: center; gap: 8px;
+    }
+    .version-badge {
+      font-size: 0.65rem; font-weight: 600;
+      background: var(--accent-glow);
+      color: var(--accent);
+      padding: 2px 6px; border-radius: 20px;
+      border: 1px solid rgba(59,130,246,0.3);
+    }
+    .topbar-actions { margin-left: auto; display: flex; gap: 8px; }
+    .btn-icon {
+      width: 36px; height: 36px; border-radius: var(--radius-sm);
+      display: flex; align-items: center; justify-content: center;
+      background: var(--bg-surface); border: 1px solid var(--border);
+      font-size: 1rem; color: var(--text-secondary);
+      transition: all var(--transition);
+    }
+    .btn-icon:hover { border-color: var(--accent); color: var(--accent); }
+
+    /* Content */
+    .content { flex: 1; padding: 24px 20px; max-width: 1200px; width: 100%; margin: 0 auto; }
+
+    /* ============================================================
+       AUTH SCREEN
+    ============================================================ */
+    #screen-auth {
+      display: flex; align-items: center; justify-content: center;
+      min-height: 100vh;
+      background: radial-gradient(ellipse at 50% 0%, rgba(59,130,246,0.08) 0%, transparent 60%);
+    }
+    .auth-card {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      padding: 40px 36px;
+      width: 100%; max-width: 420px;
+      box-shadow: var(--shadow);
+    }
+    .auth-logo {
+      text-align: center; margin-bottom: 28px;
+    }
+    .auth-logo .plane { font-size: 3rem; display: block; }
+    .auth-logo h1 { font-size: 1.6rem; font-weight: 800; margin-top: 8px; }
+    .auth-logo p { font-size: 0.9rem; color: var(--text-secondary); margin-top: 4px; }
+
+    .auth-tabs {
+      display: flex; margin-bottom: 24px;
+      background: var(--bg-card);
+      border-radius: var(--radius-sm);
+      padding: 3px;
+    }
+    .auth-tab {
+      flex: 1; padding: 8px;
+      border-radius: 6px; font-size: 0.85rem; font-weight: 600;
+      background: none; color: var(--text-muted);
+      transition: all var(--transition);
+    }
+    .auth-tab.active { background: var(--accent); color: #fff; }
+
+    .form-group { margin-bottom: 16px; }
+    .form-label { display: block; font-size: 0.8rem; color: var(--text-secondary); margin-bottom: 6px; font-weight: 500; }
+    .form-input {
+      width: 100%; padding: 11px 14px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text-primary);
+      font-size: 0.9rem;
+      transition: border-color var(--transition);
+    }
+    .form-input:focus { border-color: var(--accent); }
+    .form-input::placeholder { color: var(--text-muted); }
+
+    .btn-primary {
+      width: 100%; padding: 12px;
+      background: var(--accent);
+      color: #fff;
+      border-radius: var(--radius-sm);
+      font-size: 0.95rem; font-weight: 600;
+      transition: background var(--transition), transform 0.1s;
+    }
+    .btn-primary:hover { background: var(--accent-hover); }
+    .btn-primary:active { transform: scale(0.98); }
+    .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    .divider {
+      display: flex; align-items: center; gap: 12px;
+      margin: 20px 0;
+      color: var(--text-muted); font-size: 0.8rem;
+    }
+    .divider::before, .divider::after {
+      content: ''; flex: 1; height: 1px; background: var(--border);
+    }
+
+    .btn-google {
+      width: 100%; padding: 11px;
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text-primary);
+      font-size: 0.9rem; font-weight: 500;
+      display: flex; align-items: center; justify-content: center; gap: 10px;
+      transition: border-color var(--transition), background var(--transition);
+    }
+    .btn-google:hover { border-color: var(--accent); background: var(--accent-glow); }
+
+    .auth-error {
+      background: rgba(239,68,68,0.1);
+      border: 1px solid rgba(239,68,68,0.3);
+      color: var(--red);
+      padding: 10px 14px;
+      border-radius: var(--radius-sm);
+      font-size: 0.85rem;
+      margin-top: 12px;
+      display: none;
+    }
+
+    /* ============================================================
+       SEARCH FORM
+    ============================================================ */
+    .search-hero {
+      background: linear-gradient(135deg, rgba(59,130,246,0.08) 0%, rgba(139,92,246,0.06) 100%);
+      border: 1px solid rgba(59,130,246,0.15);
+      border-radius: 20px;
+      padding: 28px;
+      margin-bottom: 28px;
+    }
+    .search-hero h2 { font-size: 1.25rem; font-weight: 700; margin-bottom: 4px; }
+    .search-hero p { font-size: 0.85rem; color: var(--text-secondary); margin-bottom: 24px; }
+
+    .search-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 12px;
+    }
+    .search-field { display: flex; flex-direction: column; gap: 6px; }
+    .search-field label { font-size: 0.78rem; color: var(--text-secondary); font-weight: 500; letter-spacing: 0.03em; }
+    .search-input {
+      padding: 11px 14px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      color: var(--text-primary);
+      font-size: 0.9rem;
+      transition: border-color var(--transition);
+      width: 100%;
+    }
+    .search-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px var(--accent-glow); }
+    .search-input::placeholder { color: var(--text-muted); }
+
+    .search-passengers {
+      display: flex; gap: 12px;
+    }
+    .passenger-field {
+      flex: 1; display: flex; flex-direction: column; gap: 6px;
+    }
+
+    .search-actions {
+      display: flex; gap: 10px; margin-top: 4px;
+    }
+    .btn-search {
+      flex: 1; padding: 12px;
+      background: var(--accent);
+      color: #fff;
+      border-radius: var(--radius-sm);
+      font-size: 0.95rem; font-weight: 600;
+      display: flex; align-items: center; justify-content: center; gap: 8px;
+      transition: background var(--transition);
+    }
+    .btn-search:hover { background: var(--accent-hover); }
+    .btn-search:disabled { opacity: 0.5; cursor: not-allowed; }
+
+    /* ============================================================
+       RESULTS
+    ============================================================ */
+    .results-header {
+      display: flex; align-items: center; justify-content: space-between;
+      margin-bottom: 16px; flex-wrap: wrap; gap: 8px;
+    }
+    .results-header h3 { font-size: 1rem; font-weight: 600; }
+    .results-stats {
+      display: flex; gap: 8px; flex-wrap: wrap;
+    }
+    .stat-chip {
+      display: flex; align-items: center; gap: 6px;
+      padding: 4px 10px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: 20px;
+      font-size: 0.78rem; color: var(--text-secondary);
+    }
+    .stat-dot { width: 8px; height: 8px; border-radius: 50%; }
+    .stat-dot.green { background: var(--green); }
+    .stat-dot.yellow { background: var(--yellow); }
+    .stat-dot.red { background: var(--red); }
+
+    .flight-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(340px, 1fr));
+      gap: 14px;
+    }
+
+    .flight-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px;
+      transition: all var(--transition);
+      position: relative;
+      overflow: hidden;
+    }
+    .flight-card::before {
+      content: '';
+      position: absolute; top: 0; left: 0; right: 0; height: 3px;
+    }
+    .flight-card.price-low::before { background: var(--green); }
+    .flight-card.price-medium::before { background: var(--yellow); }
+    .flight-card.price-high::before { background: var(--red); }
+    .flight-card:hover { background: var(--bg-card-hover); border-color: var(--border-light); transform: translateY(-2px); }
+
+    .flight-card-header {
+      display: flex; align-items: flex-start; justify-content: space-between;
+      margin-bottom: 14px;
+    }
+    .flight-airline {
+      font-size: 0.8rem; color: var(--text-muted);
+      font-weight: 500; letter-spacing: 0.05em;
+    }
+    .flight-price-badge {
+      display: flex; align-items: center; gap: 6px;
+      padding: 6px 12px;
+      border-radius: 20px;
+      font-size: 0.9rem; font-weight: 700;
+    }
+    .flight-price-badge.low { background: var(--green-bg); color: var(--green); }
+    .flight-price-badge.medium { background: var(--yellow-bg); color: var(--yellow); }
+    .flight-price-badge.high { background: var(--red-bg); color: var(--red); }
+    .price-icon { font-size: 0.7rem; }
+
+    .flight-route {
+      display: flex; align-items: center; gap: 10px;
+      margin-bottom: 14px;
+    }
+    .route-airport {
+      flex: 1; text-align: center;
+    }
+    .airport-code { font-size: 1.4rem; font-weight: 800; letter-spacing: 0.05em; }
+    .airport-time { font-size: 0.78rem; color: var(--text-muted); margin-top: 2px; }
+    .route-middle {
+      flex: 1; text-align: center; color: var(--text-muted);
+    }
+    .route-line {
+      display: flex; align-items: center; justify-content: center; gap: 4px;
+      margin-bottom: 3px;
+    }
+    .route-dash { height: 1px; background: var(--border); flex: 1; }
+    .route-plane { font-size: 0.8rem; }
+    .route-duration { font-size: 0.72rem; }
+    .route-stops { font-size: 0.7rem; margin-top: 2px; color: var(--text-muted); }
+    .route-stops.direct { color: var(--green); }
+
+    .flight-card-footer {
+      display: flex; align-items: center; justify-content: space-between;
+      padding-top: 14px;
+      border-top: 1px solid var(--border);
+    }
+    .flight-cabin {
+      font-size: 0.75rem; color: var(--text-muted);
+      background: var(--bg-surface);
+      padding: 3px 8px; border-radius: 6px;
+    }
+    .flight-actions { display: flex; gap: 6px; }
+    .btn-fav {
+      width: 32px; height: 32px;
+      border-radius: var(--radius-sm);
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      display: flex; align-items: center; justify-content: center;
+      font-size: 0.9rem;
+      transition: all var(--transition);
+    }
+    .btn-fav:hover, .btn-fav.active { background: rgba(239,68,68,0.15); border-color: var(--red); }
+    .btn-book {
+      padding: 6px 14px;
+      background: var(--accent);
+      color: #fff;
+      border-radius: var(--radius-sm);
+      font-size: 0.8rem; font-weight: 600;
+      transition: background var(--transition);
+      display: flex; align-items: center; gap: 5px;
+    }
+    .btn-book:hover { background: var(--accent-hover); }
+
+    /* ============================================================
+       RECOMMENDATIONS
+    ============================================================ */
+    .rec-form {
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 22px;
+      margin-bottom: 24px;
+    }
+    .rec-form h3 { font-size: 1rem; font-weight: 600; margin-bottom: 16px; display: flex; align-items: center; gap: 8px; }
+    .rec-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 12px; margin-bottom: 16px; }
+
+    .rec-card {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius);
+      padding: 18px;
+      transition: all var(--transition);
+      cursor: pointer;
+      position: relative;
+      overflow: hidden;
+    }
+    .rec-card:hover { border-color: var(--accent); transform: translateY(-2px); }
+    .rec-rank {
+      position: absolute; top: 12px; right: 12px;
+      width: 24px; height: 24px; border-radius: 50%;
+      background: var(--accent-glow); color: var(--accent);
+      font-size: 0.75rem; font-weight: 700;
+      display: flex; align-items: center; justify-content: center;
+    }
+    .rec-iata { font-size: 1.6rem; font-weight: 800; letter-spacing: 0.05em; margin-bottom: 4px; }
+    .rec-name { font-size: 0.85rem; font-weight: 600; margin-bottom: 2px; }
+    .rec-country { font-size: 0.75rem; color: var(--text-muted); margin-bottom: 10px; }
+    .rec-price {
+      font-size: 0.78rem; font-weight: 600;
+      padding: 3px 8px; border-radius: 6px; display: inline-block;
+      margin-bottom: 10px;
+    }
+    .rec-price.low { background: var(--green-bg); color: var(--green); }
+    .rec-price.medium { background: var(--yellow-bg); color: var(--yellow); }
+    .rec-price.high { background: var(--red-bg); color: var(--red); }
+    .rec-highlights { list-style: none; }
+    .rec-highlights li { font-size: 0.75rem; color: var(--text-secondary); padding: 2px 0; display: flex; align-items: center; gap: 5px; }
+    .rec-highlights li::before { content: '•'; color: var(--accent); }
+    .rec-tip {
+      margin-top: 10px; padding-top: 10px;
+      border-top: 1px solid var(--border);
+      font-size: 0.75rem; color: var(--text-muted);
+      font-style: italic;
+    }
+    .rec-link {
+      margin-top: 10px; display: block;
+      font-size: 0.78rem; color: var(--accent);
+      text-align: center;
+      padding: 6px;
+      background: var(--accent-glow);
+      border-radius: var(--radius-sm);
+      transition: background var(--transition);
+    }
+    .rec-link:hover { background: rgba(59,130,246,0.25); }
+
+    .general-tip {
+      background: rgba(59,130,246,0.08);
+      border: 1px solid rgba(59,130,246,0.2);
+      border-radius: var(--radius-sm);
+      padding: 14px 18px;
+      font-size: 0.85rem;
+      color: var(--text-secondary);
+      display: flex; gap: 10px; align-items: flex-start;
+    }
+    .general-tip .tip-icon { font-size: 1rem; flex-shrink: 0; margin-top: 1px; }
+
+    /* ============================================================
+       HISTORY & FAVORITES
+    ============================================================ */
+    .list-item {
+      background: var(--bg-card);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 14px 16px;
+      margin-bottom: 8px;
+      display: flex; align-items: center; gap: 14px;
+      transition: all var(--transition);
+    }
+    .list-item:hover { border-color: var(--border-light); }
+    .list-item-icon { font-size: 1.2rem; }
+    .list-item-info { flex: 1; }
+    .list-item-title { font-size: 0.9rem; font-weight: 600; }
+    .list-item-sub { font-size: 0.78rem; color: var(--text-muted); margin-top: 2px; }
+    .list-item-price { font-size: 0.9rem; font-weight: 700; color: var(--green); }
+    .btn-delete {
+      padding: 5px 10px; border-radius: var(--radius-sm);
+      background: rgba(239,68,68,0.1); color: var(--red);
+      font-size: 0.78rem; font-weight: 500;
+      transition: background var(--transition);
+    }
+    .btn-delete:hover { background: rgba(239,68,68,0.2); }
+
+    /* ============================================================
+       LOADING & STATES
+    ============================================================ */
+    .loading-bar {
+      position: fixed; top: 0; left: 0; right: 0; height: 3px;
+      background: linear-gradient(90deg, var(--accent), #8b5cf6);
+      z-index: 9999;
+      display: none;
+      animation: loadBar 1.5s ease-in-out infinite;
+    }
+    @keyframes loadBar {
+      0% { transform: scaleX(0); transform-origin: left; }
+      50% { transform: scaleX(1); transform-origin: left; }
+      51% { transform: scaleX(1); transform-origin: right; }
+      100% { transform: scaleX(0); transform-origin: right; }
+    }
+    .loading-bar.show { display: block; }
+
+    .skeleton {
+      background: linear-gradient(90deg, var(--bg-card) 25%, var(--bg-card-hover) 50%, var(--bg-card) 75%);
+      background-size: 200% 100%;
+      animation: shimmer 1.4s infinite;
+      border-radius: var(--radius-sm);
+    }
+    @keyframes shimmer { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }
+
+    .empty-state {
+      text-align: center; padding: 60px 20px;
+      color: var(--text-muted);
+    }
+    .empty-state .icon { font-size: 3rem; margin-bottom: 16px; display: block; }
+    .empty-state h3 { font-size: 1.1rem; font-weight: 600; margin-bottom: 8px; color: var(--text-secondary); }
+    .empty-state p { font-size: 0.85rem; }
+
+    .toast {
+      position: fixed; bottom: 24px; right: 24px;
+      background: var(--bg-surface);
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      padding: 12px 18px;
+      font-size: 0.85rem;
+      box-shadow: var(--shadow);
+      z-index: 9000;
+      display: flex; align-items: center; gap: 10px;
+      transform: translateY(100px); opacity: 0;
+      transition: all 0.3s cubic-bezier(.4,0,.2,1);
+    }
+    .toast.show { transform: translateY(0); opacity: 1; }
+    .toast.success { border-color: var(--green); }
+    .toast.error { border-color: var(--red); }
+
+    /* ============================================================
+       SECTION TABS
+    ============================================================ */
+    .section { display: none; }
+    .section.active { display: block; }
+
+    /* ============================================================
+       RESPONSIVE
+    ============================================================ */
+    @media (min-width: 768px) {
+      .sidebar { box-shadow: none; }
+      .search-grid { grid-template-columns: 1fr 1fr 1fr 1fr; }
+    }
+    @media (max-width: 640px) {
+      .content { padding: 16px; }
+      .search-grid { grid-template-columns: 1fr; }
+      .flight-grid { grid-template-columns: 1fr; }
+      .rec-grid { grid-template-columns: 1fr; }
+      .auth-card { padding: 28px 20px; margin: 16px; }
+      .search-hero { padding: 20px; }
+    }
+
+    /* Scrollbar */
+    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar-track { background: transparent; }
+    ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+    ::-webkit-scrollbar-thumb:hover { background: var(--border-light); }
+  </style>
+</head>
+<body>
+
+<!-- Loading bar global -->
+<div class="loading-bar" id="loadingBar"></div>
+
+<!-- Toast -->
+<div class="toast" id="toast">
+  <span id="toastIcon">✓</span>
+  <span id="toastMsg"></span>
+</div>
+
+<!-- ============================================================
+     AUTH SCREEN
+============================================================ -->
+<div id="screen-auth" style="display:none;">
+  <div class="auth-card">
+    <div class="auth-logo">
+      <span class="plane">✈️</span>
+      <h1>FlightWatch</h1>
+      <p>Monitore passagens com inteligência</p>
+    </div>
+
+    <div class="auth-tabs">
+      <button class="auth-tab active" onclick="switchAuthTab('login')">Entrar</button>
+      <button class="auth-tab" onclick="switchAuthTab('register')">Criar conta</button>
+    </div>
+
+    <div id="tab-login">
+      <div class="form-group">
+        <label class="form-label">E-mail</label>
+        <input type="email" id="loginEmail" class="form-input" placeholder="seu@email.com" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Senha</label>
+        <input type="password" id="loginPassword" class="form-input" placeholder="••••••••" />
+      </div>
+      <button class="btn-primary" onclick="handleEmailLogin()" id="btnLogin">Entrar</button>
+    </div>
+
+    <div id="tab-register" style="display:none;">
+      <div class="form-group">
+        <label class="form-label">Nome completo</label>
+        <input type="text" id="regName" class="form-input" placeholder="Seu nome" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">E-mail</label>
+        <input type="email" id="regEmail" class="form-input" placeholder="seu@email.com" />
+      </div>
+      <div class="form-group">
+        <label class="form-label">Senha</label>
+        <input type="password" id="regPassword" class="form-input" placeholder="Mínimo 6 caracteres" />
+      </div>
+      <button class="btn-primary" onclick="handleRegister()" id="btnRegister">Criar conta</button>
+    </div>
+
+    <div class="divider">ou</div>
+    <button class="btn-google" onclick="handleGoogleLogin()">
+      <svg width="18" height="18" viewBox="0 0 18 18"><path fill="#4285F4" d="M16.51 8H8.98v3h4.3c-.18 1-.74 1.48-1.6 2.04v2.01h2.6a7.8 7.8 0 0 0 2.38-5.88c0-.57-.05-.66-.15-1.18z"/><path fill="#34A853" d="M8.98 17c2.16 0 3.97-.72 5.3-1.94l-2.6-2a4.8 4.8 0 0 1-7.18-2.54H1.83v2.07A8 8 0 0 0 8.98 17z"/><path fill="#FBBC05" d="M4.5 10.52a4.8 4.8 0 0 1 0-3.04V5.41H1.83a8 8 0 0 0 0 7.18l2.67-2.07z"/><path fill="#EA4335" d="M8.98 4.18c1.17 0 2.23.4 3.06 1.2l2.3-2.3A8 8 0 0 0 1.83 5.4L4.5 7.49a4.77 4.77 0 0 1 4.48-3.31z"/></svg>
+      Continuar com Google
+    </button>
+
+    <div class="auth-error" id="authError"></div>
+  </div>
+</div>
+
+<!-- ============================================================
+     MAIN APP
+============================================================ -->
+<div class="app" id="screen-app" style="display:none;">
+  <!-- Overlay -->
+  <div class="overlay" id="overlay" onclick="closeSidebar()"></div>
+
+  <!-- Sidebar -->
+  <aside class="sidebar" id="sidebar">
+    <div class="sidebar-logo">
+      <span>✈️</span>
+      <span>FlightWatch</span>
+    </div>
+
+    <nav class="sidebar-nav">
+      <button class="nav-item active" onclick="navigate('search')" data-section="search">
+        <span class="icon">🔍</span> Buscar Voos
+      </button>
+      <button class="nav-item" onclick="navigate('recommendations')" data-section="recommendations">
+        <span class="icon">🤖</span> Recomendações IA
+      </button>
+      <button class="nav-item" onclick="navigate('favorites')" data-section="favorites">
+        <span class="icon">❤️</span> Favoritos
+      </button>
+      <button class="nav-item" onclick="navigate('history')" data-section="history">
+        <span class="icon">📋</span> Histórico
+      </button>
+    </nav>
+
+    <div class="sidebar-footer">
+      <div class="user-info" id="sidebarUserInfo">
+        <div class="user-avatar" id="sidebarAvatar">👤</div>
+        <div>
+          <div class="user-name" id="sidebarName">—</div>
+          <div class="user-email" id="sidebarEmail">—</div>
+        </div>
+      </div>
+      <button class="btn-logout" onclick="handleLogout()">Sair da conta</button>
+    </div>
+  </aside>
+
+  <!-- Main -->
+  <main class="main">
+    <!-- Topbar -->
+    <header class="topbar">
+      <button class="hamburger" onclick="toggleSidebar()" aria-label="Menu">
+        <span></span><span></span><span></span>
+      </button>
+      <div class="topbar-title">
+        ✈️ FlightWatch
+        <span class="version-badge">v1.0.0</span>
+      </div>
+      <div class="topbar-actions">
+        <button class="btn-icon" onclick="navigate('favorites')" title="Favoritos">❤️</button>
+        <button class="btn-icon" onclick="navigate('history')" title="Histórico">📋</button>
+      </div>
+    </header>
+
+    <!-- Content -->
+    <div class="content">
+
+      <!-- SECTION: SEARCH -->
+      <div id="section-search" class="section active">
+        <div class="search-hero">
+          <h2>🔍 Buscar Passagens</h2>
+          <p>Encontre os melhores preços e compare em tempo real</p>
+
+          <div class="search-grid">
+            <div class="search-field">
+              <label>✈️ Origem (IATA)</label>
+              <input type="text" id="s-origin" class="search-input" placeholder="GRU, CGH, BSB..." maxlength="3" style="text-transform:uppercase" />
+            </div>
+            <div class="search-field">
+              <label>🏁 Destino (IATA)</label>
+              <input type="text" id="s-dest" class="search-input" placeholder="MIA, JFK, LIS..." maxlength="3" style="text-transform:uppercase" />
+            </div>
+            <div class="search-field">
+              <label>📅 Ida</label>
+              <input type="date" id="s-departure" class="search-input" />
+            </div>
+            <div class="search-field">
+              <label>📅 Volta</label>
+              <input type="date" id="s-return" class="search-input" />
+            </div>
+          </div>
+
+          <div class="search-passengers" style="margin-top:12px;">
+            <div class="passenger-field">
+              <label class="search-field" style="font-size:0.78rem;color:var(--text-secondary);margin-bottom:6px;display:block;">👤 Adultos</label>
+              <select id="s-adults" class="search-input">
+                <option value="1">1</option>
+                <option value="2">2</option>
+                <option value="3">3</option>
+                <option value="4">4</option>
+                <option value="5">5</option>
+              </select>
+            </div>
+            <div class="passenger-field">
+              <label class="search-field" style="font-size:0.78rem;color:var(--text-secondary);margin-bottom:6px;display:block;">👶 Crianças</label>
+              <select id="s-children" class="search-input">
+                <option value="0">0</option>
+                <option value="1">1</option>
+                <option value="2">2</option>
+                <option value="3">3</option>
+              </select>
+            </div>
+          </div>
+
+          <div class="search-actions" style="margin-top:16px;">
+            <button class="btn-search" onclick="searchFlights()" id="btnSearch">
+              <span>🔍</span> Buscar Voos
+            </button>
+          </div>
+        </div>
+
+        <!-- Results -->
+        <div id="search-results"></div>
+      </div>
+
+      <!-- SECTION: RECOMMENDATIONS -->
+      <div id="section-recommendations" class="section">
+        <div class="rec-form">
+          <h3>🤖 Recomendações por Inteligência Artificial</h3>
+          <div class="rec-grid">
+            <div class="search-field">
+              <label>✈️ Saindo de</label>
+              <input type="text" id="r-origin" class="search-input" placeholder="São Paulo, GRU..." />
+            </div>
+            <div class="search-field">
+              <label>💰 Orçamento (R$)</label>
+              <input type="number" id="r-budget" class="search-input" placeholder="Ex: 3000" />
+            </div>
+            <div class="search-field">
+              <label>📅 Mês de viagem</label>
+              <input type="month" id="r-month" class="search-input" />
+            </div>
+            <div class="search-field">
+              <label>🎯 Preferências</label>
+              <input type="text" id="r-prefs" class="search-input" placeholder="Praia, cultura, aventura..." />
+            </div>
+          </div>
+          <button class="btn-search" onclick="getRecommendations()" id="btnRec" style="max-width:220px;">
+            <span>✨</span> Gerar Recomendações
+          </button>
+        </div>
+
+        <div id="rec-results"></div>
+      </div>
+
+      <!-- SECTION: FAVORITES -->
+      <div id="section-favorites" class="section">
+        <div class="results-header">
+          <h3>❤️ Voos Favoritos</h3>
+        </div>
+        <div id="favorites-list"></div>
+      </div>
+
+      <!-- SECTION: HISTORY -->
+      <div id="section-history" class="section">
+        <div class="results-header">
+          <h3>📋 Histórico de Buscas</h3>
+          <button class="btn-delete" onclick="clearHistory()" style="padding:6px 12px;">🗑️ Limpar tudo</button>
+        </div>
+        <div id="history-list"></div>
+      </div>
+
+    </div>
+  </main>
+</div>
+
+<script>
+// ============================================================
+// CONFIG
+// ============================================================
+const CONFIG = {
+  APP_VERSION: '1.0.0',
+  SUPABASE_URL: 'SEU_SUPABASE_URL',       // ← substituir
+  SUPABASE_KEY: 'SUA_SUPABASE_ANON_KEY',  // ← substituir
+  EDGE_SEARCH: 'SEU_SUPABASE_URL/functions/v1/search-flights',
+  EDGE_REC:    'SEU_SUPABASE_URL/functions/v1/ai-recommendations',
+};
+
+// ============================================================
+// SUPABASE INIT
+// ============================================================
+const { createClient } = supabase;
+const sb = createClient(CONFIG.SUPABASE_URL, CONFIG.SUPABASE_KEY);
+
+let currentUser = null;
+let currentProfile = null;
+
+// ============================================================
+// BOOT
+// ============================================================
+(async () => {
+  const { data: { session } } = await sb.auth.getSession();
+  if (session?.user) {
+    currentUser = session.user;
+    await loadProfile();
+    showApp();
+  } else {
+    showAuth();
+  }
+
+  sb.auth.onAuthStateChange(async (event, session) => {
+    if (event === 'SIGNED_IN' && session?.user) {
+      currentUser = session.user;
+      await loadProfile();
+      showApp();
+    } else if (event === 'SIGNED_OUT') {
+      currentUser = null; currentProfile = null;
+      showAuth();
+    }
+  });
+
+  // Valores padrão
+  const today = new Date();
+  const yyyy = today.getFullYear();
+  const mm = String(today.getMonth() + 1).padStart(2, '0');
+  const dd = String(today.getDate()).padStart(2, '0');
+  const nextWeek = new Date(today); nextWeek.setDate(today.getDate() + 7);
+  const nwMm = String(nextWeek.getMonth() + 1).padStart(2, '0');
+  const nwDd = String(nextWeek.getDate()).padStart(2, '0');
+
+  document.getElementById('s-departure').min = `${yyyy}-${mm}-${dd}`;
+  document.getElementById('s-departure').value = `${yyyy}-${mm}-${dd}`;
+  document.getElementById('s-return').value = `${yyyy}-${nwMm}-${nwDd}`;
+  document.getElementById('r-month').value = `${yyyy}-${mm}`;
+
+  // Enter no search
+  ['s-origin','s-dest','s-departure','s-return'].forEach(id => {
+    document.getElementById(id)?.addEventListener('keydown', e => {
+      if (e.key === 'Enter') searchFlights();
+    });
+  });
+})();
+
+// ============================================================
+// AUTH
+// ============================================================
+function showAuth() {
+  document.getElementById('screen-auth').style.display = 'flex';
+  document.getElementById('screen-app').style.display = 'none';
+}
+function showApp() {
+  document.getElementById('screen-auth').style.display = 'none';
+  document.getElementById('screen-app').style.display = 'flex';
+  updateUserUI();
+}
+
+function switchAuthTab(tab) {
+  document.getElementById('tab-login').style.display = tab === 'login' ? 'block' : 'none';
+  document.getElementById('tab-register').style.display = tab === 'register' ? 'block' : 'none';
+  document.querySelectorAll('.auth-tab').forEach((t, i) => t.classList.toggle('active', (i === 0) === (tab === 'login')));
+  hideAuthError();
+}
+
+function showAuthError(msg) {
+  const el = document.getElementById('authError');
+  el.textContent = msg; el.style.display = 'block';
+}
+function hideAuthError() {
+  document.getElementById('authError').style.display = 'none';
+}
+
+async function handleEmailLogin() {
+  const email = document.getElementById('loginEmail').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  if (!email || !password) return showAuthError('Preencha e-mail e senha.');
+  setLoading('btnLogin', true, 'Entrando...');
+  const { error } = await sb.auth.signInWithPassword({ email, password });
+  setLoading('btnLogin', false, 'Entrar');
+  if (error) showAuthError(error.message);
+  else hideAuthError();
+}
+
+async function handleRegister() {
+  const name = document.getElementById('regName').value.trim();
+  const email = document.getElementById('regEmail').value.trim();
+  const password = document.getElementById('regPassword').value;
+  if (!name || !email || !password) return showAuthError('Preencha todos os campos.');
+  if (password.length < 6) return showAuthError('Senha deve ter ao menos 6 caracteres.');
+  setLoading('btnRegister', true, 'Criando...');
+  const { error } = await sb.auth.signUp({ email, password, options: { data: { full_name: name } } });
+  setLoading('btnRegister', false, 'Criar conta');
+  if (error) showAuthError(error.message);
+  else showAuthError('✅ Conta criada! Verifique seu e-mail para confirmar.');
+}
+
+async function handleGoogleLogin() {
+  await sb.auth.signInWithOAuth({
+    provider: 'google',
+    options: { redirectTo: window.location.href }
+  });
+}
+
+async function handleLogout() {
+  await sb.auth.signOut();
+  closeSidebar();
+}
+
+async function loadProfile() {
+  if (!currentUser) return;
+  const { data } = await sb.from('profiles').select('*').eq('id', currentUser.id).single();
+  currentProfile = data;
+}
+
+function updateUserUI() {
+  const name = currentProfile?.full_name || currentUser?.email?.split('@')[0] || 'Usuário';
+  const email = currentUser?.email || '';
+  const avatar = currentProfile?.avatar_url;
+  document.getElementById('sidebarName').textContent = name;
+  document.getElementById('sidebarEmail').textContent = email;
+  const avatarEl = document.getElementById('sidebarAvatar');
+  if (avatar) {
+    avatarEl.innerHTML = `<img src="${avatar}" alt="avatar" />`;
+  } else {
+    avatarEl.textContent = name[0]?.toUpperCase() || '👤';
+  }
+}
+
+// ============================================================
+// NAVIGATION
+// ============================================================
+function navigate(section) {
+  document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+  document.getElementById(`section-${section}`)?.classList.add('active');
+  document.querySelectorAll('.nav-item').forEach(n => {
+    n.classList.toggle('active', n.dataset.section === section);
+  });
+  closeSidebar();
+  if (section === 'favorites') loadFavorites();
+  if (section === 'history') loadHistory();
+}
+
+// ============================================================
+// SIDEBAR
+// ============================================================
+function toggleSidebar() {
+  document.getElementById('sidebar').classList.toggle('open');
+  document.getElementById('overlay').classList.toggle('show');
+}
+function closeSidebar() {
+  document.getElementById('sidebar').classList.remove('open');
+  document.getElementById('overlay').classList.remove('show');
+}
+
+// ============================================================
+// SEARCH FLIGHTS
+// ============================================================
+async function searchFlights() {
+  const origin = document.getElementById('s-origin').value.toUpperCase().trim();
+  const dest = document.getElementById('s-dest').value.toUpperCase().trim();
+  const departure = document.getElementById('s-departure').value;
+  const returnDate = document.getElementById('s-return').value;
+  const adults = parseInt(document.getElementById('s-adults').value);
+  const children = parseInt(document.getElementById('s-children').value);
+
+  if (!origin || !dest || !departure) {
+    return showToast('Preencha Origem, Destino e Data de Ida', 'error');
+  }
+  if (origin.length !== 3 || dest.length !== 3) {
+    return showToast('Códigos IATA devem ter 3 letras (ex: GRU, MIA)', 'error');
+  }
+
+  const resultsEl = document.getElementById('search-results');
+  resultsEl.innerHTML = renderSkeletons(4);
+  setLoading('btnSearch', true, '🔍 Buscando...');
+  showGlobalLoading(true);
+
+  try {
+    const res = await fetch(CONFIG.EDGE_SEARCH, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${CONFIG.SUPABASE_KEY}` },
+      body: JSON.stringify({ originCode: origin, destinationCode: dest, departureDate: departure, returnDate: returnDate || undefined, adults, children }),
+    });
+    const data = await res.json();
+
+    if (data.error) throw new Error(data.error);
+    if (!data.flights?.length) {
+      resultsEl.innerHTML = renderEmptyState('✈️', 'Nenhum voo encontrado', 'Tente datas ou destinos diferentes.');
+      return;
+    }
+
+    // Salva no histórico
+    await saveSearch({ origin, dest, departure, returnDate, adults, children, count: data.flights.length, minPrice: data.stats.minPrice });
+
+    resultsEl.innerHTML = `
+      <div class="results-header">
+        <h3>${data.flights.length} voos encontrados · ${origin} → ${dest}</h3>
+        <div class="results-stats">
+          <div class="stat-chip"><div class="stat-dot green"></div>Abaixo da média</div>
+          <div class="stat-chip"><div class="stat-dot yellow"></div>Na média</div>
+          <div class="stat-chip"><div class="stat-dot red"></div>Acima da média</div>
+        </div>
+      </div>
+      <div class="flight-grid">${data.flights.map(renderFlightCard).join('')}</div>
+    `;
+  } catch (err) {
+    resultsEl.innerHTML = renderEmptyState('⚠️', 'Erro na busca', err.message);
+  } finally {
+    setLoading('btnSearch', false, '🔍 Buscar Voos');
+    showGlobalLoading(false);
+  }
+}
+
+function renderFlightCard(f) {
+  const dep = new Date(f.departure.time);
+  const arr = new Date(f.arrival.time);
+  const depStr = dep.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  const arrStr = arr.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+  const dur = f.duration.replace('PT', '').replace('H', 'h ').replace('M', 'min').toLowerCase();
+  const priceIcons = { low: '🟢', medium: '🟡', high: '🔴' };
+  const priceLabels = { low: 'Abaixo da média', medium: 'Na média', high: 'Acima da média' };
+
+  return `
+    <div class="flight-card price-${f.price.category}">
+      <div class="flight-card-header">
+        <div>
+          <div class="flight-airline">${f.airline} · ${f.flightNumber}</div>
+        </div>
+        <div class="flight-price-badge ${f.price.category}">
+          <span class="price-icon">${priceIcons[f.price.category]}</span>
+          R$ ${f.price.total.toLocaleString('pt-BR', { minimumFractionDigits: 2 })}
+        </div>
+      </div>
+      <div class="flight-route">
+        <div class="route-airport">
+          <div class="airport-code">${f.departure.airport}</div>
+          <div class="airport-time">${depStr}</div>
+        </div>
+        <div class="route-middle">
+          <div class="route-line">
+            <div class="route-dash"></div>
+            <div class="route-plane">✈</div>
+            <div class="route-dash"></div>
+          </div>
+          <div class="route-duration">${dur}</div>
+          <div class="route-stops ${f.stops === 0 ? 'direct' : ''}">
+            ${f.stops === 0 ? 'Direto' : f.stops + ' parada(s)'}
+          </div>
+        </div>
+        <div class="route-airport">
+          <div class="airport-code">${f.arrival.airport}</div>
+          <div class="airport-time">${arrStr}</div>
+        </div>
+      </div>
+      <div class="flight-card-footer">
+        <span class="flight-cabin">${f.cabin}</span>
+        <div class="flight-actions">
+          <button class="btn-fav" onclick="toggleFavorite(this, ${JSON.stringify(f).replace(/"/g, '&quot;')})" title="Favoritar">♡</button>
+          <a href="${f.bookingLink}" target="_blank" rel="noopener" class="btn-book">
+            Ver oferta <span>↗</span>
+          </a>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+// ============================================================
+// AI RECOMMENDATIONS
+// ============================================================
+async function getRecommendations() {
+  const origin = document.getElementById('r-origin').value.trim();
+  const budget = document.getElementById('r-budget').value;
+  const month = document.getElementById('r-month').value;
+  const prefs = document.getElementById('r-prefs').value.trim();
+  const adults = parseInt(document.getElementById('s-adults').value) || 1;
+  const children = parseInt(document.getElementById('s-children').value) || 0;
+
+  if (!origin) return showToast('Informe a cidade de origem', 'error');
+
+  const resultsEl = document.getElementById('rec-results');
+  resultsEl.innerHTML = renderSkeletons(6);
+  setLoading('btnRec', true, '✨ Gerando...');
+  showGlobalLoading(true);
+
+  try {
+    const res = await fetch(CONFIG.EDGE_REC, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': `Bearer ${CONFIG.SUPABASE_KEY}` },
+      body: JSON.stringify({ origin, budget: budget || null, travelMonth: month || null, adults, children, preferences: prefs || null }),
+    });
+    const data = await res.json();
+
+    if (data.error) throw new Error(data.error);
+
+    const recs = data.recommendations || [];
+    resultsEl.innerHTML = `
+      ${data.generalTip ? `<div class="general-tip" style="margin-bottom:20px;"><span class="tip-icon">💡</span><span>${data.generalTip}</span></div>` : ''}
+      <div class="rec-grid">${recs.map(renderRecCard).join('')}</div>
+    `;
+  } catch (err) {
+    resultsEl.innerHTML = renderEmptyState('⚠️', 'Erro ao gerar recomendações', err.message);
+  } finally {
+    setLoading('btnRec', false, '✨ Gerar Recomendações');
+    showGlobalLoading(false);
+  }
+}
+
+function renderRecCard(r) {
+  const highlights = (r.highlights || []).slice(0, 3).map(h => `<li>${h}</li>`).join('');
+  const months = (r.bestMonths || []).join(', ');
+  return `
+    <div class="rec-card">
+      <div class="rec-rank">${r.rank}</div>
+      <div class="rec-iata">${r.iataCode}</div>
+      <div class="rec-name">${r.destination}</div>
+      <div class="rec-country">🌍 ${r.country}</div>
+      <span class="rec-price ${r.priceCategory}">${r.estimatedPrice}</span>
+      ${months ? `<div style="font-size:0.72rem;color:var(--text-muted);margin-bottom:8px;">Melhores meses: ${months}</div>` : ''}
+      <ul class="rec-highlights">${highlights}</ul>
+      ${r.tip ? `<div class="rec-tip">💡 ${r.tip}</div>` : ''}
+      <a href="${r.bookingUrl}" target="_blank" rel="noopener" class="rec-link">Buscar voos ↗</a>
+    </div>
+  `;
+}
+
+// ============================================================
+// FAVORITES
+// ============================================================
+async function toggleFavorite(btn, flight) {
+  if (!currentUser) return showToast('Faça login para salvar favoritos', 'error');
+  const isFav = btn.classList.contains('active');
+
+  if (isFav) {
+    const { error } = await sb.from('favorites')
+      .delete()
+      .eq('user_id', currentUser.id)
+      .eq('origin_code', flight.departure.airport)
+      .eq('destination_code', flight.arrival.airport);
+    if (!error) { btn.classList.remove('active'); btn.textContent = '♡'; showToast('Removido dos favoritos'); }
+  } else {
+    const { error } = await sb.from('favorites').insert({
+      user_id: currentUser.id,
+      flight_offer: flight,
+      origin_code: flight.departure.airport,
+      destination_code: flight.arrival.airport,
+      departure_date: flight.departure.time.split('T')[0],
+      price: flight.price.total,
+      currency: flight.price.currency,
+      airline: flight.airline,
+      booking_url: flight.bookingLink,
+    });
+    if (!error) { btn.classList.add('active'); btn.textContent = '❤️'; showToast('Adicionado aos favoritos', 'success'); }
+    else if (error.code === '23505') showToast('Já está nos favoritos');
+  }
+}
+
+async function loadFavorites() {
+  if (!currentUser) return;
+  const listEl = document.getElementById('favorites-list');
+  listEl.innerHTML = '<div class="skeleton" style="height:70px;margin-bottom:8px;"></div>'.repeat(3);
+  const { data, error } = await sb.from('favorites').select('*').eq('user_id', currentUser.id).order('created_at', { ascending: false });
+  if (error || !data?.length) {
+    listEl.innerHTML = renderEmptyState('❤️', 'Nenhum favorito ainda', 'Salve voos interessantes durante sua busca.');
+    return;
+  }
+  listEl.innerHTML = data.map(fav => `
+    <div class="list-item">
+      <div class="list-item-icon">✈️</div>
+      <div class="list-item-info">
+        <div class="list-item-title">${fav.origin_code} → ${fav.destination_code} · ${fav.airline || '—'}</div>
+        <div class="list-item-sub">${new Date(fav.departure_date).toLocaleDateString('pt-BR')} · ${new Date(fav.created_at).toLocaleDateString('pt-BR')}</div>
+      </div>
+      <div class="list-item-price">R$ ${Number(fav.price).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>
+      ${fav.booking_url ? `<a href="${fav.booking_url}" target="_blank" rel="noopener" class="btn-book" style="font-size:0.75rem;">Ver ↗</a>` : ''}
+      <button class="btn-delete" onclick="deleteFavorite('${fav.id}')">🗑️</button>
+    </div>
+  `).join('');
+}
+
+async function deleteFavorite(id) {
+  await sb.from('favorites').delete().eq('id', id);
+  showToast('Favorito removido');
+  loadFavorites();
+}
+
+// ============================================================
+// HISTORY
+// ============================================================
+async function saveSearch({ origin, dest, departure, returnDate, adults, children, count, minPrice }) {
+  if (!currentUser) return;
+  await sb.from('search_history').insert({
+    user_id: currentUser.id,
+    origin_code: origin,
+    destination_code: dest,
+    departure_date: departure,
+    return_date: returnDate || null,
+    adults, children,
+    results_count: count,
+    min_price: minPrice,
+  });
+}
+
+async function loadHistory() {
+  if (!currentUser) return;
+  const listEl = document.getElementById('history-list');
+  listEl.innerHTML = '<div class="skeleton" style="height:70px;margin-bottom:8px;"></div>'.repeat(3);
+  const { data } = await sb.from('search_history').select('*').eq('user_id', currentUser.id).order('created_at', { ascending: false }).limit(50);
+  if (!data?.length) {
+    listEl.innerHTML = renderEmptyState('📋', 'Nenhuma busca ainda', 'Suas buscas de voos aparecerão aqui.');
+    return;
+  }
+  listEl.innerHTML = data.map(h => `
+    <div class="list-item">
+      <div class="list-item-icon">🔍</div>
+      <div class="list-item-info">
+        <div class="list-item-title">${h.origin_code} → ${h.destination_code}</div>
+        <div class="list-item-sub">
+          ${new Date(h.departure_date).toLocaleDateString('pt-BR')}
+          ${h.return_date ? ' · Volta ' + new Date(h.return_date).toLocaleDateString('pt-BR') : ''}
+          · ${h.adults} adulto(s) · ${h.results_count} voos encontrados
+        </div>
+      </div>
+      ${h.min_price ? `<div class="list-item-price">A partir de R$ ${Number(h.min_price).toLocaleString('pt-BR', { minimumFractionDigits: 2 })}</div>` : ''}
+    </div>
+  `).join('');
+}
+
+async function clearHistory() {
+  if (!currentUser) return;
+  if (!confirm('Deseja limpar todo o histórico de buscas?')) return;
+  await sb.from('search_history').delete().eq('user_id', currentUser.id);
+  showToast('Histórico limpo');
+  loadHistory();
+}
+
+// ============================================================
+// UI HELPERS
+// ============================================================
+function renderSkeletons(n) {
+  return Array(n).fill(`<div class="skeleton" style="height:180px;border-radius:12px;"></div>`).join('');
+}
+
+function renderEmptyState(icon, title, sub) {
+  return `<div class="empty-state"><span class="icon">${icon}</span><h3>${title}</h3><p>${sub}</p></div>`;
+}
+
+function setLoading(id, loading, label) {
+  const btn = document.getElementById(id);
+  if (!btn) return;
+  btn.disabled = loading;
+  btn.textContent = label;
+}
+
+function showGlobalLoading(show) {
+  document.getElementById('loadingBar').classList.toggle('show', show);
+}
+
+let toastTimer;
+function showToast(msg, type = 'success') {
+  const toast = document.getElementById('toast');
+  const icons = { success: '✅', error: '❌' };
+  document.getElementById('toastIcon').textContent = icons[type] || '✓';
+  document.getElementById('toastMsg').textContent = msg;
+  toast.className = `toast ${type} show`;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toast.classList.remove('show'), 3000);
+}
+
+// ============================================================
+// SERVICE WORKER (PWA)
+// ============================================================
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => {
+    navigator.serviceWorker.register('/flightwatch/sw.js').catch(() => {});
+  });
+}
+</script>
+</body>
+</html>
