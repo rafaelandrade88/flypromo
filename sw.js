@@ -1,7 +1,7 @@
 // FlightWatch - Service Worker
 // v1.0.0
 
-const CACHE_NAME = 'flightwatch-v1.0.0';
+const CACHE_NAME = 'flightwatch-v1.2.0';
 const STATIC_ASSETS = [
   '/flightwatch/',
   '/flightwatch/index.html',

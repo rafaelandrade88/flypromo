@@ -1389,7 +1389,7 @@
         </button>
         <div class="topbar-title">
           ✈️ FlightWatch
-          <span class="version-badge">v1.0.0</span>
+          <span class="version-badge">v1.2.0</span>
         </div>
         <div class="topbar-actions">
           <button class="btn-icon" onclick="navigate('favorites')" title="Favoritos">❤️</button>
@@ -1520,11 +1520,11 @@
     // CONFIG
     // ============================================================
     const CONFIG = {
-      APP_VERSION: '1.0.0',
-      SUPABASE_URL: 'https://supabase.com/dashboard/project/eyxhioyqanamgbocfslt',       // ← substituir
-      SUPABASE_KEY: 'sb_publishable_Hh77PODraCGTHqUV7Wt0PA_5-2DZ5H6',  // ← substituir
-      EDGE_SEARCH: 'https://supabase.com/dashboard/project/eyxhioyqanamgbocfslt/functions/v1/search-flights',
-      EDGE_REC: 'https://supabase.com/dashboard/project/eyxhioyqanamgbocfslt/functions/v1/ai-recommendations',
+      APP_VERSION: '1.2.0',
+      SUPABASE_URL: 'https://eyxhioyqanamgbocfslt.supabase.co',                                          // ← substituir
+      SUPABASE_KEY: 'sb_publishable_Hh77PODraCGTHqUV7Wt0PA_5-2DZ5H6',                                     // ← substituir
+      EDGE_SEARCH: 'https://eyxhioyqanamgbocfslt.supabase.co/functions/v1/search-flights',              // ← substituir SEU_SUPABASE_URL
+      EDGE_REC: 'https://eyxhioyqanamgbocfslt.supabase.co/functions/v1/ai-recommendations',          // ← substituir SEU_SUPABASE_URL
     };
 
     // ============================================================
@@ -1752,19 +1752,61 @@
     }
 
     function renderFlightCard(f) {
-      const dep = new Date(f.departure.time);
-      const arr = new Date(f.arrival.time);
-      const depStr = dep.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-      const arrStr = arr.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
-      const dur = f.duration.replace('PT', '').replace('H', 'h ').replace('M', 'min').toLowerCase();
+      // SerpApi retorna horários como strings "2024-12-20 14:30" ou ISO
+      function parseTime(t) {
+        if (!t) return '—';
+        const d = new Date(t.includes('T') ? t : t.replace(' ', 'T'));
+        if (isNaN(d)) return t.slice(11, 16) || t; // fallback: pega só HH:MM
+        return d.toLocaleTimeString('pt-BR', { hour: '2-digit', minute: '2-digit' });
+      }
+
+      const depStr = parseTime(f.departure.time);
+      const arrStr = parseTime(f.arrival.time);
       const priceIcons = { low: '🟢', medium: '🟡', high: '🔴' };
-      const priceLabels = { low: 'Abaixo da média', medium: 'Na média', high: 'Acima da média' };
+      const airlines = Array.isArray(f.airlines) ? f.airlines.join(' · ') : (f.airline || '—');
+      const flightNums = Array.isArray(f.flightNumbers) && f.flightNumbers.length
+        ? f.flightNumbers.slice(0, 2).join(', ')
+        : '';
+
+      // Economia/custo adicional vs. média
+      const savingsHtml = f.price.savings && f.price.savings > 0
+        ? `<span style="font-size:0.72rem;color:var(--green);margin-left:6px;">↓ R$ ${Math.abs(f.price.savings).toLocaleString('pt-BR')} vs. média</span>`
+        : f.price.savings && f.price.savings < 0
+          ? `<span style="font-size:0.72rem;color:var(--red);margin-left:6px;">↑ R$ ${Math.abs(f.price.savings).toLocaleString('pt-BR')} vs. média</span>`
+          : '';
+
+      // Voo de volta
+      const returnHtml = f.returnFlight ? `
+    <div style="margin-top:10px;padding-top:10px;border-top:1px solid var(--border);">
+      <div style="font-size:0.72rem;color:var(--text-muted);margin-bottom:6px;">↩ VOLTA</div>
+      <div class="flight-route" style="margin-bottom:0;">
+        <div class="route-airport">
+          <div class="airport-code">${f.returnFlight.departure.airport}</div>
+          <div class="airport-time">${parseTime(f.returnFlight.departure.time)}</div>
+        </div>
+        <div class="route-middle">
+          <div class="route-line"><div class="route-dash"></div><div class="route-plane">✈</div><div class="route-dash"></div></div>
+        </div>
+        <div class="route-airport">
+          <div class="airport-code">${f.returnFlight.arrival.airport}</div>
+          <div class="airport-time">${parseTime(f.returnFlight.arrival.time)}</div>
+        </div>
+      </div>
+    </div>` : '';
+
+      // Extensions (ex: "Emissões de carbono estimadas: 120 kg CO2e")
+      const extHtml = Array.isArray(f.extensions) && f.extensions.length
+        ? `<div style="font-size:0.72rem;color:var(--text-muted);margin-top:8px;">${f.extensions.slice(0, 2).join(' · ')}</div>`
+        : '';
+
+      const favData = JSON.stringify(f).replace(/"/g, '&quot;');
 
       return `
     <div class="flight-card price-${f.price.category}">
       <div class="flight-card-header">
         <div>
-          <div class="flight-airline">${f.airline} · ${f.flightNumber}</div>
+          <div class="flight-airline">${airlines}${flightNums ? ' · ' + flightNums : ''}</div>
+          ${savingsHtml}
         </div>
         <div class="flight-price-badge ${f.price.category}">
           <span class="price-icon">${priceIcons[f.price.category]}</span>
@@ -1775,6 +1817,7 @@
         <div class="route-airport">
           <div class="airport-code">${f.departure.airport}</div>
           <div class="airport-time">${depStr}</div>
+          ${f.departure.terminal ? `<div style="font-size:0.65rem;color:var(--text-muted);">T${f.departure.terminal}</div>` : ''}
         </div>
         <div class="route-middle">
           <div class="route-line">
@@ -1782,22 +1825,25 @@
             <div class="route-plane">✈</div>
             <div class="route-dash"></div>
           </div>
-          <div class="route-duration">${dur}</div>
+          <div class="route-duration">${f.duration}</div>
           <div class="route-stops ${f.stops === 0 ? 'direct' : ''}">
-            ${f.stops === 0 ? 'Direto' : f.stops + ' parada(s)'}
+            ${f.stops === 0 ? '✈ Direto' : f.stops + ' parada(s)'}
           </div>
         </div>
         <div class="route-airport">
           <div class="airport-code">${f.arrival.airport}</div>
           <div class="airport-time">${arrStr}</div>
+          ${f.arrival.terminal ? `<div style="font-size:0.65rem;color:var(--text-muted);">T${f.arrival.terminal}</div>` : ''}
         </div>
       </div>
+      ${returnHtml}
+      ${extHtml}
       <div class="flight-card-footer">
         <span class="flight-cabin">${f.cabin}</span>
         <div class="flight-actions">
-          <button class="btn-fav" onclick="toggleFavorite(this, ${JSON.stringify(f).replace(/"/g, '&quot;')})" title="Favoritar">♡</button>
+          <button class="btn-fav" onclick="toggleFavorite(this, '${favData}')" title="Favoritar">♡</button>
           <a href="${f.bookingLink}" target="_blank" rel="noopener" class="btn-book">
-            Ver oferta <span>↗</span>
+            Reservar <span>↗</span>
           </a>
         </div>
       </div>
