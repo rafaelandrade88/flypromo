@@ -1,10 +1,11 @@
 // FlightWatch - Edge Function: ai-recommendations
-// Recomendações inteligentes de destinos via Claude API
-// Versão: 1.0.0
+// Recomendações inteligentes de destinos via Google Gemini API
+// Versão: 2.0.0
 
 import { serve } from "https://deno.land/std@0.168.0/http/server.ts";
 
-const ANTHROPIC_API_KEY = Deno.env.get("ANTHROPIC_API_KEY")!;
+const GEMINI_API_KEY = Deno.env.get("GEMINI_API_KEY")!;
+const GEMINI_URL = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${GEMINI_API_KEY}`;
 
 const CORS_HEADERS = {
   "Access-Control-Allow-Origin": "*",
@@ -37,7 +38,7 @@ Contexto da busca:
 - Passageiros: ${adults} adulto(s)${children > 0 ? ` e ${children} criança(s)` : ""}
 - Preferências: ${preferences || "Nenhuma preferência específica"}
 
-Retorne APENAS um JSON válido (sem markdown, sem texto adicional) com exatamente este formato:
+Retorne APENAS um JSON válido (sem markdown, sem blocos de código, sem texto adicional) com exatamente este formato:
 {
   "recommendations": [
     {
@@ -50,7 +51,7 @@ Retorne APENAS um JSON válido (sem markdown, sem texto adicional) com exatament
       "highlights": ["highlight 1", "highlight 2", "highlight 3"],
       "tip": "Dica específica de economia para este destino",
       "priceCategory": "low",
-      "bookingUrl": "https://www.google.com/travel/flights?q=flights+${origin.split(' ')[0].toUpperCase()}+to+IATA"
+      "bookingUrl": "https://www.google.com/travel/flights?q=voos+de+${encodeURIComponent(origin)}+para+IATA"
     }
   ],
   "generalTip": "Dica geral de economia para viagens saindo de ${origin}"
@@ -58,26 +59,24 @@ Retorne APENAS um JSON válido (sem markdown, sem texto adicional) com exatament
 
 Gere exatamente 10 recomendações ordenadas do mais barato ao mais caro. priceCategory deve ser "low", "medium" ou "high". Foque em destinos realistas e acessíveis para brasileiros saindo de ${origin}.`;
 
-    const res = await fetch("https://api.anthropic.com/v1/messages", {
+    const res = await fetch(GEMINI_URL, {
       method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        "x-api-key": ANTHROPIC_API_KEY,
-        "anthropic-version": "2023-06-01",
-      },
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
-        model: "claude-sonnet-4-6",
-        max_tokens: 2000,
-        messages: [{ role: "user", content: prompt }],
+        contents: [{ parts: [{ text: prompt }] }],
+        generationConfig: {
+          temperature: 0.7,
+          maxOutputTokens: 2048,
+        },
       }),
     });
 
     if (!res.ok) {
       const err = await res.json();
       const message =
-        err?.error?.message?.includes("credit balance")
+        err?.error?.message?.includes("quota")
           ? "Serviço de IA temporariamente indisponível. Tente novamente mais tarde."
-          : err?.error?.message ?? "Claude API error";
+          : err?.error?.message ?? "Gemini API error";
       return new Response(JSON.stringify({ error: message }), {
         status: res.status,
         headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
@@ -85,16 +84,18 @@ Gere exatamente 10 recomendações ordenadas do mais barato ao mais caro. priceC
     }
 
     const data = await res.json();
-    const rawText = data.content[0].text.trim();
+    const rawText = data.candidates?.[0]?.content?.parts?.[0]?.text?.trim() ?? "";
 
     let parsed;
     try {
-      parsed = JSON.parse(rawText);
+      // Remove markdown code blocks if Gemini wraps in ```json ... ```
+      const clean = rawText.replace(/^```(?:json)?\s*/i, "").replace(/\s*```$/i, "").trim();
+      parsed = JSON.parse(clean);
     } catch {
-      // Fallback: tenta extrair JSON de dentro do texto
+      // Fallback: extrai JSON do texto
       const match = rawText.match(/\{[\s\S]*\}/);
       if (match) parsed = JSON.parse(match[0]);
-      else throw new Error("Invalid JSON from Claude");
+      else throw new Error("Invalid JSON from Gemini");
     }
 
     return new Response(JSON.stringify(parsed), {
@@ -102,7 +103,7 @@ Gere exatamente 10 recomendações ordenadas do mais barato ao mais caro. priceC
     });
   } catch (err) {
     console.error("[ai-recommendations] Error:", err);
-    return new Response(JSON.stringify({ error: "Internal server error" }), {
+    return new Response(JSON.stringify({ error: "Erro interno ao gerar recomendações" }), {
       status: 500,
       headers: { ...CORS_HEADERS, "Content-Type": "application/json" },
     });
