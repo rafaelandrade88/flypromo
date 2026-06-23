@@ -5,6 +5,8 @@ import { supabase } from '@/lib/supabase'
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
+import { Separator } from '@/components/ui/separator'
+import { GoogleButton } from './GoogleButton'
 
 export function RegisterForm() {
   const [name, setName] = useState('')
@@ -71,6 +73,12 @@ export function RegisterForm() {
         {loading ? <Loader2 className="animate-spin" /> : null}
         Criar conta
       </Button>
+      <div className="flex items-center gap-3">
+        <Separator className="flex-1" />
+        <span className="text-xs text-muted-foreground">ou</span>
+        <Separator className="flex-1" />
+      </div>
+      <GoogleButton />
     </form>
   )
 }
