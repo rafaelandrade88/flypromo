@@ -4,6 +4,7 @@ import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Card, CardContent } from '@/components/ui/card'
+import { AirportCombobox } from '@/components/ui/airport-combobox'
 import { todayISO } from '@/lib/utils'
 import type { SearchParams } from '@/types'
 
@@ -23,8 +24,8 @@ export function SearchForm({ loading, onSearch }: SearchFormProps) {
 
   function submit() {
     onSearch({
-      originCode: origin.toUpperCase().trim(),
-      destinationCode: destination.toUpperCase().trim(),
+      originCode: origin.trim(),
+      destinationCode: destination.trim(),
       departureDate,
       returnDate: returnDate || undefined,
       adults,
@@ -43,24 +44,22 @@ export function SearchForm({ loading, onSearch }: SearchFormProps) {
         <form onSubmit={handleSubmit} className="flex flex-col gap-4">
           <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
             <div className="flex flex-col gap-2">
-              <Label htmlFor="s-origin">Origem (IATA)</Label>
-              <Input
+              <Label htmlFor="s-origin">Origem</Label>
+              <AirportCombobox
                 id="s-origin"
-                placeholder="GRU"
-                maxLength={3}
                 value={origin}
-                onChange={(e) => setOrigin(e.target.value.toUpperCase())}
+                onChange={setOrigin}
+                placeholder="Cidade ou GRU"
                 required
               />
             </div>
             <div className="flex flex-col gap-2">
-              <Label htmlFor="s-dest">Destino (IATA)</Label>
-              <Input
+              <Label htmlFor="s-dest">Destino</Label>
+              <AirportCombobox
                 id="s-dest"
-                placeholder="MIA"
-                maxLength={3}
                 value={destination}
-                onChange={(e) => setDestination(e.target.value.toUpperCase())}
+                onChange={setDestination}
+                placeholder="Cidade ou MIA"
                 required
               />
             </div>
